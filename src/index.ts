@@ -35,6 +35,21 @@ export interface GlobalDragHandleOptions {
    * Custom nodes to be included for drag handle
    */
   customNodes: string[];
+
+  /**
+   * Callback function to be called when drag handle is dragged
+   */
+  onDragStart?: (event: DragEvent, view: EditorView) => void;
+
+  /**
+   * Callback function to be called when drag handle is dragged
+   */
+  onDragging?: (event: DragEvent, view: EditorView) => void;
+
+  /**
+   * Callback function to be called when drag handle is dragged
+   */
+  onDragEnd?: (event: DragEvent, view: EditorView) => void;
 }
 function absoluteRect(node: Element) {
   const data = node.getBoundingClientRect();
@@ -106,6 +121,7 @@ export function DragHandlePlugin(
   let listType = '';
   function handleDragStart(event: DragEvent, view: EditorView) {
     view.focus();
+    options.onDragStart?.(event, view);
 
     if (!event.dataTransfer) return;
 
@@ -120,7 +136,7 @@ export function DragHandlePlugin(
     if (!(node instanceof Element)) return;
 
     let draggedNodePos = nodePosAtDOM(node, view, options);
-    if (draggedNodePos == null || draggedNodePos < 0) return;
+    if (draggedNodePos === null || draggedNodePos === void 0 || draggedNodePos < 0) return;
     draggedNodePos = calcNodePos(draggedNodePos, view);
 
     const { from, to } = view.state.selection;
@@ -166,7 +182,7 @@ export function DragHandlePlugin(
         (selection as NodeSelection).node.type.isInline ||
         (selection as NodeSelection).node.type.name === 'tableRow'
       ) {
-        let $pos = view.state.doc.resolve(selection.from);
+        const $pos = view.state.doc.resolve(selection.from);
         selection = NodeSelection.create(view.state.doc, $pos.before());
       }
     }
@@ -177,7 +193,7 @@ export function DragHandlePlugin(
       view.state.selection instanceof NodeSelection &&
       view.state.selection.node.type.name === 'listItem'
     ) {
-      listType = node.parentElement!.tagName;
+      listType = node.parentElement?.tagName ?? '';
     }
 
     const slice = view.state.selection.content();
@@ -191,6 +207,10 @@ export function DragHandlePlugin(
     event.dataTransfer.setDragImage(node, 0, 0);
 
     view.dragging = { slice, move: event.ctrlKey };
+  }
+
+  function handleDragEnd(event: DragEvent, view: EditorView) {
+    options.onDragEnd?.(event, view);
   }
 
   let dragHandleElement: HTMLElement | null = null;
@@ -235,19 +255,25 @@ export function DragHandlePlugin(
         handleDragStart(e, view);
       }
 
+      function onDragHandleDragEnd(e: DragEvent) {
+        handleDragEnd(e, view);
+      }
+
       dragHandleElement.addEventListener('dragstart', onDragHandleDragStart);
 
       function onDragHandleDrag(e: DragEvent) {
         hideDragHandle();
-        let scrollY = window.scrollY;
+        const scrollY = window.scrollY;
         if (e.clientY < options.scrollTreshold) {
           window.scrollTo({ top: scrollY - 30, behavior: 'smooth' });
         } else if (window.innerHeight - e.clientY < options.scrollTreshold) {
           window.scrollTo({ top: scrollY + 30, behavior: 'smooth' });
         }
+        options.onDragging?.(e, view);
       }
 
       dragHandleElement.addEventListener('drag', onDragHandleDrag);
+      dragHandleElement.addEventListener('dragend', onDragHandleDragEnd);
 
       hideDragHandle();
 
@@ -269,6 +295,7 @@ export function DragHandlePlugin(
             'dragstart',
             onDragHandleDragStart,
           );
+          dragHandleElement?.removeEventListener('dragend', onDragHandleDragEnd);
           dragHandleElement = null;
           view?.dom?.parentElement?.removeEventListener(
             'mouseout',
@@ -365,7 +392,7 @@ export function DragHandlePlugin(
             view.state.selection instanceof NodeSelection &&
             view.state.selection.node.type.name === 'listItem' &&
             !isDroppedInsideList &&
-            listType == 'OL'
+            listType === 'OL'
           ) {
             const newList = view.state.schema.nodes.orderedList?.createAndFill(
               null,
@@ -392,6 +419,9 @@ const GlobalDragHandle = Extension.create({
       scrollTreshold: 100,
       excludedTags: [],
       customNodes: [],
+      onDragStart: () => {},
+      onDragging: () => {},
+      onDragEnd: () => {},
     };
   },
 
@@ -404,6 +434,9 @@ const GlobalDragHandle = Extension.create({
         dragHandleSelector: this.options.dragHandleSelector,
         excludedTags: this.options.excludedTags,
         customNodes: this.options.customNodes,
+        onDragStart: this.options.onDragStart,
+        onDragging: this.options.onDragging,
+        onDragEnd: this.options.onDragEnd,
       }),
     ];
   },
